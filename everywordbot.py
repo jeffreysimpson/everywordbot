@@ -1,17 +1,15 @@
 import tweepy
-import os
+from nltk.corpus import words
+import random
 
 
 class EverywordBot(object):
 
     def __init__(self, consumer_key, consumer_secret,
                  access_token, token_secret,
-                 source_file_name, index_file_name,
                  lat=None, long=None, place_id=None,
                  prefix=None, suffix=None, bbox=None,
                  dry_run=False):
-        self.source_file_name = source_file_name
-        self.index_file_name = index_file_name
         self.lat = lat
         self.long = long
         self.place_id = place_id
@@ -24,29 +22,23 @@ class EverywordBot(object):
         auth.set_access_token(access_token, token_secret)
         self.twitter = tweepy.API(auth)
 
-    def _get_current_index(self):
-        if not(os.path.isfile(self.index_file_name)):
-            return 0
-        with open(self.index_file_name) as index_fh:
-            return int(index_fh.read().strip())
+    def _get_current_line(self):
+        new_word = False
+        word_list = words.words()
+        while new_word is False:
+            word_set = set(line.strip() for line in open("used_words"))
 
-    def _increment_index(self, index):
-        with open(self.index_file_name, "w") as index_fh:
-            index_fh.truncate()
-            index_fh.write("%d" % (index + 1))
-            index_fh.close()
+            rand_idx = random.randint(a=0, b=len(word_list)-1)
+            rand_word = word_list[rand_idx]
 
-    def _get_current_line(self, index):
-        found = False
-        with open(self.source_file_name) as source_fh:
-            # read the desired line
-            for i, status_str in enumerate(source_fh):
-                if i == index:
-                    found = True
-                    break
-            if not found:
-                raise EOFError("No more words")
-            return status_str.strip()
+            if rand_word in word_set:
+                print(f"We've already tweeted {rand_word}!")
+            else:
+                print(f"New word to tweet: {rand_word}!")
+                with open("used_words", 'a') as f:
+                    f.write(f"{rand_word}\n")
+                new_word = True
+        return rand_word.capitalize()
 
     def _random_point_in(self, bbox):
         """Given a bounding box of (swlat, swlon, nelat, nelon),
@@ -57,8 +49,7 @@ class EverywordBot(object):
         return (lat, long)
 
     def post(self):
-        index = self._get_current_index()
-        status_str = self._get_current_line(index)
+        status_str = self._get_current_line()
         if self.prefix:
             status_str = self.prefix + status_str
         if self.suffix:
@@ -72,7 +63,6 @@ class EverywordBot(object):
             self.twitter.update_status(status=status_str,
                                        lat=self.lat, long=self.long,
                                        place_id=self.place_id)
-            self._increment_index(index)
 
 
 def _csv_to_float_list(csv):
@@ -94,12 +84,6 @@ if __name__ == '__main__':
                       help="twitter token key")
     parser.add_option('--token_secret', dest='token_secret',
                       help="twitter token secret")
-    parser.add_option('--source_file', dest='source_file',
-                      default="tweet_list.txt",
-                      help="source file (one line per tweet)")
-    parser.add_option('--index_file', dest='index_file',
-                      default="index",
-                      help="index file (must be able to write to this file)")
     parser.add_option('--lat', dest='lat',
                       help="The latitude for tweets")
     parser.add_option('--long', dest='long',
@@ -125,7 +109,6 @@ if __name__ == '__main__':
 
     bot = EverywordBot(options.consumer_key, options.consumer_secret,
                        options.access_token, options.token_secret,
-                       options.source_file, options.index_file,
                        options.lat, options.long, options.place_id,
                        options.prefix, options.suffix, options.bbox,
                        options.dry_run)
